@@ -3,35 +3,21 @@ import random
 import logging
 
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 from openai import OpenAI
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("motivation-bot")
 
-# ===== ENV =====
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-PUBLIC_URL = os.getenv("PUBLIC_URL", "")  # ví dụ: https://bot.yourdomain.com hoặc https://xxx.onrender.com
-WEBHOOK_SECRET_PATH = os.getenv("WEBHOOK_SECRET_PATH", "")  # ví dụ: "tg-9f3a2c1b..."
-
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("Missing TELEGRAM_BOT_TOKEN")
 if not OPENAI_API_KEY:
     raise RuntimeError("Missing OPENAI_API_KEY")
-if not PUBLIC_URL:
-    raise RuntimeError("Missing PUBLIC_URL (vd: https://xxx.onrender.com)")
-if not WEBHOOK_SECRET_PATH:
-    raise RuntimeError("Missing WEBHOOK_SECRET_PATH (vd: tg-<random>)")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -58,6 +44,7 @@ def build_prompt(mode: str) -> str:
         tone = "hard-truth, đen tối có kiểm soát nhưng vẫn an toàn"
     else:
         tone = random.choice(["tích cực", "hơi gắt", "hard-truth an toàn"])
+
     return (
         f"Tạo 1 câu động lực theo tone: {tone}. "
         "Bối cảnh: người dùng đang mất động lực làm việc và trì hoãn. "
@@ -128,37 +115,19 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await send_quote(update, "random")
 
-async def on_startup(app: Application) -> None:
-    webhook_url = f"{PUBLIC_URL.rstrip('/')}/{WEBHOOK_SECRET_PATH}"
-    await app.bot.set_webhook(url=webhook_url)
-    logger.info("Webhook set to %s", webhook_url)
-
 def main() -> None:
-    port = int(os.getenv("PORT", "10000"))
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    application = (
-        Application.builder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .post_init(on_startup)
-        .build()
-    )
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("motivation", motivation))
+    app.add_handler(CommandHandler("soft", soft))
+    app.add_handler(CommandHandler("tough", tough))
+    app.add_handler(CommandHandler("dark", dark))
+    app.add_handler(CommandHandler("five", five))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("motivation", motivation))
-    application.add_handler(CommandHandler("soft", soft))
-    application.add_handler(CommandHandler("tough", tough))
-    application.add_handler(CommandHandler("dark", dark))
-    application.add_handler(CommandHandler("five", five))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-
-    # Webhook server
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=WEBHOOK_SECRET_PATH,
-        webhook_url=f"{PUBLIC_URL.rstrip('/')}/{WEBHOOK_SECRET_PATH}",
-        allowed_updates=Update.ALL_TYPES,
-    )
+    print("Bot is running (polling)...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
